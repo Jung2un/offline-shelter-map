@@ -27,3 +27,19 @@ test('active snapshot remains unchanged until explicit activation',async()=>{
  assert.equal((await c.active()).version,'v0123456789abcdef');
  assert.equal((await c.active()).count,1);
 });
+test('worker serves saved navigation and unseen tiles without network',async()=>{
+ const events={};const base='https://example.test/offline-shelter-map/';
+ const stored={version:'v2222222222222222',totalBytes:20,files:[{},{}]};
+ await c.activate(stored);
+ const snapshot=await caches.open(c.cacheName(stored.version));
+ await snapshot.put(base+'index.html',new Response('<h1>offline</h1>'));
+ await snapshot.put(base+'data/tiles/13/1/2.json',new Response('{"tile":true}'));
+ let networkCalls=0;
+ const context={URL,Response,caches,OfflineCore:c,importScripts:()=>{},fetch:async()=>{networkCalls++;throw Error('Offline')},self:{location:base+'sw.js',addEventListener:(type,fn)=>events[type]=fn}};
+ vm.createContext(context);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../www/sw.js'),'utf8'),context);
+ async function request(url,mode='cors'){let result;events.fetch({request:{method:'GET',url,mode},respondWith:p=>result=p});return result}
+ assert.match(await(await request(base,'navigate')).text(),/offline/);
+ assert.equal(await(await request(base+'data/tiles/13/1/2.json?v=1')).text(),'{"tile":true}');
+ assert.equal(networkCalls,0);
+ assert.equal((await request(base+'data/tiles/13/missing.json')).status,503);
+});

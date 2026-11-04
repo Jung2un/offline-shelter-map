@@ -8,3 +8,5 @@
 - 개인 위치 수신, 개인 핀 저장 화면은 촬영하지 않았습니다.
 - 원본 PNG는 같은 폴더에 있어 정지 화면으로도 볼 수 있습니다.
 - 지도 데이터 표기: © OpenStreetMap contributors · ODbL / Natural Earth.
+
+- 09-offline-download.png: 공개 GitHub Pages에서 실제 다운로드를 시작한 후 일시중지한 화면. 전체 완료를 나타내는 사진은 아닙니다.

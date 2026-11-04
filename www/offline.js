@@ -44,6 +44,7 @@
      const needed=m.files.filter(f=>!keys.has(new URL(f.path,base).href)).reduce((n,f)=>n+f.bytes,0);
      if(estimate?.quota&&estimate.quota-estimate.usage<needed*1.1)throw Error('저장 공간이 부족합니다. 여유 공간을 확보한 뒤 다시 시도하세요.');
     }
+    setStatus(verifyOnly?'저장 파일 검사 중':'전체 지도 저장 중');
     let done=0,bytes=0,cursor=0;const failures=[];
     async function worker(){while(cursor<m.files.length&&!controller.signal.aborted){const f=m.files[cursor++],url=new URL(f.path,base);try{
      let r=await c.match(url);let ok=await OfflineCore.valid(r,f);

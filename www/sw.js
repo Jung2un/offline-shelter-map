@@ -1,5 +1,6 @@
+// Incremental download and optional local-only verification UI.
 importScripts('./offline-core.js');
-const BASE=new URL('./',self.location),SHELL=OfflineCore.prefix+'shell-1';
+const BASE=new URL('./',self.location),SHELL=OfflineCore.prefix+'shell-2';
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const response=await fetch(new URL('offline-manifest.json',BASE),{cache:'no-store'});
  if(!response.ok)throw Error('Manifest unavailable');
@@ -17,8 +18,10 @@ self.addEventListener('fetch',event=>{
  event.respondWith((async()=>{
   const active=await OfflineCore.active();
   const key=event.request.mode==='navigate'?new URL('index.html',BASE).href:u.origin+u.pathname;
+  const shell=await(await caches.open(SHELL)).match(key);
+  if(!u.pathname.startsWith(new URL('data/',BASE).pathname)&&shell)return shell;
   if(active){const cached=await(await caches.open(OfflineCore.cacheName(active.version))).match(key);if(cached)return cached}
-  const shell=await(await caches.open(SHELL)).match(key);if(shell)return shell;
+  if(shell)return shell;
   try{return await fetch(event.request)}catch{return new Response('저장하지 않은 파일입니다. 인터넷 연결 후 지도 다운로드를 완료하세요.',{status:503,headers:{'Content-Type':'text/plain;charset=utf-8'}})}
  })());
 });

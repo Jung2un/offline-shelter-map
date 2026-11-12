@@ -1,6 +1,12 @@
 /* Local data only. No remote tile server or map SDK is used. */
 const DATA_ROOT='data/';
-async function readJSON(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error('파일을 읽지 못했습니다: '+path);return r.json()}
+async function readJSON(path){
+ // Cache Storage is also available to the page when Safari has no controlling worker yet.
+ if(globalThis.OfflineCore&&'caches'in globalThis){
+  try{const saved=await OfflineCore.saved(new URL(path,location.href).href);if(saved?.ok)return await saved.json()}catch(e){console.warn('저장 파일 읽기 실패:',path,e)}
+ }
+ const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error('파일을 읽지 못했습니다: '+path);return r.json();
+}
 const OfflineMap={
  async init(){
   this.map=L.map('map',{zoomControl:false,attributionControl:true,minZoom:6,maxZoom:18,preferCanvas:true,maxBounds:[[32.7,123.8],[39,132.2]],maxBoundsViscosity:.8}).setView([37.5665,126.978],15);
@@ -11,6 +17,10 @@ const OfflineMap={
   this.index=index;this.hasDetail=Object.keys(index).some(k=>k.startsWith('13/'));this.labels=labels;this.cache=new Map();this.pending=new Map();this.layer=L.layerGroup().addTo(this.map);
   this.map.createPane('localCanvas');this.map.getPane('localCanvas').style.zIndex='450';this.map.getPane('localCanvas').style.pointerEvents='none';
   this.canvas=L.DomUtil.create('canvas','offline-canvas',this.map.getPane('localCanvas'));this.canvas.style.position='absolute';
+  this.notice=L.DomUtil.create('div','map-load-status',document.querySelector('#map-wrap'));this.notice.hidden=true;this.notice.setAttribute('role','status');
+  const retry=()=>this.draw();window.addEventListener('offline-map-ready',retry);window.addEventListener('online',retry);
+  navigator.serviceWorker?.addEventListener('controllerchange',retry);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
   this.map.on('moveend resize',()=>this.draw());this.map.on('zoomstart',()=>{this.canvas.style.visibility='hidden'});
   this.map.on('zoomend',()=>{this.canvas.style.visibility='visible'});await this.draw();setTimeout(()=>this.map.attributionControl.getContainer().classList.add('credit-collapsed'),5000);return this.map;
  },
@@ -26,7 +36,12 @@ const OfflineMap={
   const nw=m.project(b.getNorthWest(),base).divideBy(256).floor(),se=m.project(b.getSouthEast(),base).divideBy(256).floor();
   const keys=[];for(let x=nw.x;x<=se.x;x++)for(let y=nw.y;y<=se.y;y++)keys.push(`${base}/${x}/${y}`);
   try{
-   const parts=await Promise.all(keys.map(k=>this.tile(k)));if(this.generation!==generation)return;
+   const results=await Promise.allSettled(keys.map(k=>this.tile(k)));if(this.generation!==generation)return;
+   const parts=results.filter(r=>r.status==='fulfilled').map(r=>r.value),missing=results.filter(r=>r.status==='rejected').length;
+   this.notice.hidden=!missing;
+   this.notice.textContent=missing?'일부 배경지도를 불러오지 못했습니다. 인터넷 연결 후 설정 → 이어받기 / 업데이트 확인을 실행하세요.':'';
+   // Draw the available area even if one tile is missing; never discard every tile.
+
    const c=this.canvas;c.width=size.x*dpr;c.height=size.y*dpr;c.style.width=size.x+'px';c.style.height=size.y+'px';L.DomUtil.setPosition(c,m.containerPointToLayerPoint([0,0]));
    const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.lineCap='round';ctx.lineJoin='round';
    const features=parts.flat().filter(f=>{const q=f[3];return !q||(!(q[2]<b.getWest()||q[0]>b.getEast()||q[3]<b.getSouth()||q[1]>b.getNorth())&&(z>=12||Math.max(q[2]-q[0],(q[3]-q[1])*1.3)*256*2**z/360>1.5))}),order={park:0,lake:1,water:2,coast:3,road:4,major:5,rail:6};features.sort((a,b)=>order[a[0]]-order[b[0]]);
@@ -57,6 +72,6 @@ const OfflineMap={
    for(const [name,lon,lat,kind] of this.labels){if(!b.contains([lat,lon])||(z<9&&kind!=='city')||(z<12&&kind==='village'))continue;label(name,m.latLngToContainerPoint([lat,lon]),`${kind==='city'?650:500} ${z<10?13:12}px Pretendard`,'#576a58')}
    for(const [name,p] of roadLabels)label(name,p,'11px Pretendard','#747464');
    if(window.isNativeOfflineApp)document.querySelector('#offline-state').textContent='오프라인 사용 가능';
-  }catch(e){if(window.isNativeOfflineApp)document.querySelector('#offline-state').textContent='일부 지도 파일 읽기 실패';console.error(e)}
+  }catch(e){this.notice.hidden=false;this.notice.textContent='배경지도를 표시하지 못했습니다. 설정에서 저장된 지도 확인을 실행해 주세요.';console.error(e)}
  }
 };

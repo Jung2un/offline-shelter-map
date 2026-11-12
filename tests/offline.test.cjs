@@ -43,3 +43,27 @@ test('worker serves saved navigation and unseen tiles without network',async()=>
  assert.equal(networkCalls,0);
  assert.equal((await request(base+'data/tiles/13/missing.json')).status,503);
 });
+
+test('page can read saved tiles directly from the completed snapshot',async()=>{
+ const version='v3333333333333333',url='https://example.test/offline-shelter-map/data/tiles/13/1/2.json';
+ await c.activate({version,totalBytes:2,files:[{}]});
+ await(await caches.open(c.cacheName(version))).put(url,new Response('[]'));
+ assert.equal(await(await c.saved(url)).text(),'[]');
+ assert.equal(await c.saved(url+'missing'),undefined);
+});
+
+test('worker updates app code while keeping previously downloaded map data',async()=>{
+ const events={},base='https://example.test/offline-shelter-map/',version='v4444444444444444';
+ await c.activate({version,totalBytes:2,files:[{}]});
+ const snapshot=await caches.open(c.cacheName(version)),shell=await caches.open(c.prefix+'shell-2');
+ for(const file of ['index.html','map.js','data/tile-index.json']){
+  await snapshot.put(base+file,new Response('old '+file));
+  await shell.put(base+file,new Response('new '+file));
+ }
+ const context={URL,Response,caches,OfflineCore:c,importScripts:()=>{},fetch:async()=>{throw Error('offline')},self:{location:base+'sw.js',addEventListener:(type,fn)=>events[type]=fn}};
+ vm.createContext(context);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../www/sw.js'),'utf8'),context);
+ async function request(file,mode='cors'){let result;events.fetch({request:{method:'GET',url:base+file,mode},respondWith:p=>result=p});return (await result).text()}
+ assert.equal(await request('','navigate'),'new index.html');
+ assert.equal(await request('map.js?v=31'),'new map.js');
+ assert.equal(await request('data/tile-index.json'),'old data/tile-index.json');
+});
